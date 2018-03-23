@@ -4,9 +4,13 @@
 # To see this in action, see zoneout_seq2seq.py
 import tensorflow as tf
 
-z_prob_cells = 0.05
-z_prob_states = 0
-
+# This is official implementation, optimized by weso
+# Concern:
+# 1. why add (1 - state_part_zoneout_prob) to dropout layer, dorpout on difference of new_state and old state
+#    and then add old state, is enought to represent the zoneout equation.
+# 2. return output, new_state is zoneout, but output still not zoneout, as actual output will be used by next layer
+# 3. paper not mentioned in inference if zoneout still used or as dropout not used.
+#    in inference, why not use the state directly?
 
 # Wrapper for the TF RNN cell
 # For an LSTM, the 'cell' is a tuple containing state and cell
@@ -45,12 +49,6 @@ class ZoneoutWrapper(tf.nn.rnn_cell.RNNCell):
 
         output, new_state = self._cell(inputs, state, scope)
         if isinstance(self.state_size, tuple):
-            # concern
-            # 1. why add (1 - state_part_zoneout_prob) to dropout layer, dorpout on difference of new_state and old state
-            #    and then add old state, is enought to represent the zoneout equation.
-            # 2. return output, new_state is zoneout, but output still not zoneout, as actual output will be used by next layer
-            # 3. paper not mentioned in inference if zoneout still used or as dropout not used.
-            #    in inference, why not use the state directly?
             if self.is_training:
                 new_state = tuple((1 - state_part_zoneout_prob) * tf.python.nn_ops.dropout(
                     new_state_part - state_part, (1 - state_part_zoneout_prob), seed=self._seed) + state_part
@@ -61,16 +59,25 @@ class ZoneoutWrapper(tf.nn.rnn_cell.RNNCell):
                                   for new_state_part, state_part, state_part_zoneout_prob
                                   in zip(new_state, state, self._zoneout_prob))
         else:
+            state_size = self._cell.state_size
+            c_prev = tf.slice(state, [0, 0], [-1, state_size / 2])
+            h_prev = tf.slice(state, [0, state_size / 2], [-1, state_size / 2])
+            c = tf.slice(new_state, [0, 0], [[-1, state_size / 2]])
+            h = tf.slice(new_state, [0, state_size / 2], [-1, state_size / 2])
+            c_zoneout_prob, h_zoneout_prob = self._zoneout_prob[0], self._zoneout_prob[1]
             if self.is_training:
-                new_state = (1 - state_part_zoneout_prob) * tf.python.nn_ops.dropout(
-                        new_state_part - state_part, (1 - state_part_zoneout_prob), seed=self._seed) + state_part
+                c_new = (1 - c_zoneout_prob)\
+                        * tf.python.nn_ops.dropout(c - c_prev, 1 - c_zoneout_prob, seed=self._seed) + c_prev
+                h_new = (1 - h_zoneout_prob)\
+                        * tf.python.nn_ops.dropout(h - h_prev, 1 - h_zoneout_prob, seed=self._seed) + h_prev
+                new_state = tf.concat([c_new, h_new], axis=1)
             else:
-                new_state = state_part_zoneout_prob * state_part + (1 - state_part_zoneout_prob) * new_state_part
+                c_new = (1 - c_zoneout_prob) * c + c_zoneout_prob * c_prev
+                h_new = (1 - h_zoneout_prob) * h + h_zoneout_prob * h_prev
+                new_state = tf.concat([c_new, h_new], axis=1)
 
         return output, new_state
 
 
 # Wrap your cells like this
-cell = ZoneoutWrapper(tf.nn.rnn_cell.LSTMCell(128),
-                      zoneout_prob=z_prob_cells,
-                      state_zoneout_prob=z_prob_states)
+cell = ZoneoutWrapper(tf.nn.rnn_cell.LSTMCell(128), zoneout_prob=(0.1, 0.2))
