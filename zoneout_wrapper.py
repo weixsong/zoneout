@@ -11,6 +11,8 @@ import tensorflow as tf
 # 2. return output, new_state is zoneout, but output still not zoneout, as actual output will be used by next layer
 # 3. paper not mentioned in inference if zoneout still used or as dropout not used.
 #    in inference, why not use the state directly?
+# 4. The implementation is different with the paper equation. Is that by design or just this implementation is OK?
+
 
 # Wrapper for the TF RNN cell
 # For an LSTM, the 'cell' is a tuple containing state and cell
