@@ -45,6 +45,12 @@ class ZoneoutWrapper(tf.nn.rnn_cell.RNNCell):
 
         output, new_state = self._cell(inputs, state, scope)
         if isinstance(self.state_size, tuple):
+            # concern
+            # 1. why add (1 - state_part_zoneout_prob) to dropout layer, dorpout on difference of new_state and old state
+            #    and then add old state, is enought to represent the zoneout equation.
+            # 2. return output, new_state is zoneout, but output still not zoneout, as actual output will be used by next layer
+            # 3. paper not mentioned in inference if zoneout still used or as dropout not used.
+            #    in inference, why not use the state directly?
             if self.is_training:
                 new_state = tuple((1 - state_part_zoneout_prob) * tf.python.nn_ops.dropout(
                     new_state_part - state_part, (1 - state_part_zoneout_prob), seed=self._seed) + state_part
