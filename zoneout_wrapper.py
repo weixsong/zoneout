@@ -267,12 +267,14 @@ class ZoneoutLSTMCell(RNNCell):
         c = binary_mask_cell * c_prev + binary_mask_cell_complement * c_temp
       else:
         # like dropout, zoneout inference process will use the traditional cell state
+        # TODO: fix bug here, inference should use the expectation of Ct-1 and Ct
         c = c_temp
     else:
       c_temp = c_prev * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) * self._activation(j)
       if self.is_training and self.zoneout_prob_output > 0.0:
         c = binary_mask_cell * c_prev + binary_mask_cell_complement * c_temp
       else:
+        # TODO: fix bug here, inference should use the expectation of Ct-1 and Ct
         c = c_temp
 
     if self._cell_clip:
@@ -284,12 +286,14 @@ class ZoneoutLSTMCell(RNNCell):
       if self.is_training and self.zoneout_prob_output > 0.0:
         h = binary_mask_output * h_prev + binary_mask_output_complement * h_temp
       else:
+        # TODO: fix bug here, inference should use the expectation of Ht-1 and Ht
         h = h_temp
     else:
       h_temp = tf.sigmoid(o) * self._activation(c)
       if self.is_training and self.zoneout_prob_output > 0.0:
         h = binary_mask_output * h_prev + binary_mask_output_complement * h_temp
       else:
+        # TODO: fix bug here, inference should use the expectation of Ht-1 and Ht
         h = h_temp
 
     # apply prejection
