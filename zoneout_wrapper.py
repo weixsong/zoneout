@@ -17,11 +17,6 @@ class ZoneoutWrapper(tf.nn.rnn_cell.RNNCell):
     """Operator adding zoneout to all states (states+cells) of the given cell.
     # This is official implementation, optimized by weso(watkinsong@163.com)
     # Concern:
-    # 1. why add (1 - state_part_zoneout_prob) to dropout layer, dropout on difference of new_state and old state
-    #    and then add old state, is enough to represent the zoneout equation.
-    #    ** This aim to make the expected sum is unchanged.
-    #    ** dropout ops actually scaled the output so that the expected sum is unchanged.
-    #    ** So we need to scale the output back to it true value
     # 2. return output, new_state is zoneout, but output still not zoneout,
     #    as actual output will be used by next layer
     #    ** output is actually not zoneout, I think this is a bug.
@@ -266,16 +261,15 @@ class ZoneoutLSTMCell(RNNCell):
       if self.is_training and self.zoneout_prob_cell > 0.0:
         c = binary_mask_cell * c_prev + binary_mask_cell_complement * c_temp
       else:
-        # like dropout, zoneout inference process will use the traditional cell state
-        # TODO: fix bug here, inference should use the expectation of Ct-1 and Ct
-        c = c_temp
+        # like dropout, use expectation in inference
+        c = keep_prob_cell * c_prev + (1 - keep_prob_cell) * c_temp
     else:
       c_temp = c_prev * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) * self._activation(j)
       if self.is_training and self.zoneout_prob_output > 0.0:
         c = binary_mask_cell * c_prev + binary_mask_cell_complement * c_temp
       else:
-        # TODO: fix bug here, inference should use the expectation of Ct-1 and Ct
-        c = c_temp
+        # like dropout, use expectation in inference
+        c = keep_prob_cell * c_prev + (1 - keep_prob_cell) * c_temp
 
     if self._cell_clip:
         c = tf.clip_by_value(c, -self._cell_clip, self._cell_clip)
@@ -286,15 +280,15 @@ class ZoneoutLSTMCell(RNNCell):
       if self.is_training and self.zoneout_prob_output > 0.0:
         h = binary_mask_output * h_prev + binary_mask_output_complement * h_temp
       else:
-        # TODO: fix bug here, inference should use the expectation of Ht-1 and Ht
-        h = h_temp
+        # as dropout, use expectation in inference
+        h = keep_prob_output * h_prev + (1 - keep_prob_output) * h_temp
     else:
       h_temp = tf.sigmoid(o) * self._activation(c)
       if self.is_training and self.zoneout_prob_output > 0.0:
         h = binary_mask_output * h_prev + binary_mask_output_complement * h_temp
       else:
-        # TODO: fix bug here, inference should use the expectation of Ht-1 and Ht
-        h = h_temp
+        # as dropout, use expectation in inference
+        h = keep_prob_output * h_prev + (1 - keep_prob_output) * h_temp
 
     # apply prejection
     if self._num_proj is not None:
